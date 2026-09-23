@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b" />
+      <stop offset="50%" stop-color="#022c22" />
+      <stop offset="100%" stop-color="#0a0a0a" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="50%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <circle cx="256" cy="256" r="210" fill="none" stroke="#10b981" stroke-width="3" stroke-dasharray="6 8" opacity="0.4" />
+  <!-- Mihrab / Dome Arch Silhouette -->
+  <path d="M256 90 C180 160 140 220 140 310 C140 375 192 410 256 410 C320 410 372 375 372 310 C372 220 332 160 256 90 Z" fill="none" stroke="url(#gold)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Elegant Crescent Moon -->
+  <path d="M276 170 C220 170 176 214 176 270 C176 326 220 370 276 370 C246 350 230 315 230 270 C230 225 246 190 276 170 Z" fill="url(#gold)" />
+  <!-- Star -->
+  <polygon points="285,225 290,238 304,239 293,248 297,262 285,254 273,262 277,248 266,239 280,238" fill="#34d399" />
+  <!-- Open Quran Symbol at Base -->
+  <path d="M210 345 C230 340 245 348 256 354 C267 348 282 340 302 345 L302 365 C282 360 267 368 256 374 C245 368 230 360 210 365 Z" fill="#10b981" opacity="0.9" />
+</svg>

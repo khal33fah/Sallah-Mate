@@ -1,0 +1,6 @@
+{
+  "name": "Sallah Mate",
+  "description": "Daily prayer times tracker with live GPS Qibla compass navigator, Adhan app suspension blocker, strict anti-bypass security, voice recorder Iqamah prayer verification, camera mate verification, spiritual streaks, and context-aware Duas.",
+  "requestFramePermissions": ["camera", "geolocation", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

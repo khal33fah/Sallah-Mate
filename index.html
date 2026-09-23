@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Filter benign Vite HMR websocket connection notifications in cloud sandbox
+      (function() {
+        function isIgnored(arg) {
+          if (!arg) return false;
+          var str = '';
+          try {
+            str = typeof arg === 'string' ? arg : (arg.message || arg.stack || (arg.reason && (arg.reason.message || String(arg.reason))) || String(arg));
+          } catch(e) {
+            str = String(arg || '');
+          }
+          return str.indexOf('[vite]') !== -1 ||
+                 str.indexOf('vite:') !== -1 ||
+                 str.indexOf('failed to connect to websocket') !== -1 ||
+                 str.indexOf("reading 'send'") !== -1 ||
+                 str.indexOf('WebSocket') !== -1 ||
+                 str.indexOf('ws://') !== -1 ||
+                 str.indexOf('wss://') !== -1;
+        }
+
+        if (typeof window !== 'undefined') {
+          window.addEventListener('error', function(event) {
+            var msg = (event && (event.message || (event.error && (event.error.message || event.error.stack)))) || '';
+            if (isIgnored(msg)) {
+              if (event.preventDefault) event.preventDefault();
+              if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+              return true;
+            }
+          }, true);
+
+          window.addEventListener('unhandledrejection', function(event) {
+            var reason = (event && (event.reason ? (event.reason.message || event.reason.stack || String(event.reason)) : '')) || '';
+            if (isIgnored(reason)) {
+              if (event.preventDefault) event.preventDefault();
+              if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+              return true;
+            }
+          }, true);
+        }
+
+        if (typeof console !== 'undefined') {
+          var origError = Function.prototype.bind.call(console.error, console);
+          var origWarn = Function.prototype.bind.call(console.warn, console);
+          var origLog = Function.prototype.bind.call(console.log, console);
+          var origInfo = Function.prototype.bind.call(console.info, console);
+
+          console.error = function() {
+            for (var i = 0; i < arguments.length; i++) {
+              if (isIgnored(arguments[i])) return;
+            }
+            return origError.apply(console, arguments);
+          };
+
+          console.warn = function() {
+            for (var i = 0; i < arguments.length; i++) {
+              if (isIgnored(arguments[i])) return;
+            }
+            return origWarn.apply(console, arguments);
+          };
+
+          console.log = function() {
+            for (var i = 0; i < arguments.length; i++) {
+              if (isIgnored(arguments[i])) return;
+            }
+            return origLog.apply(console, arguments);
+          };
+
+          console.info = function() {
+            for (var i = 0; i < arguments.length; i++) {
+              if (isIgnored(arguments[i])) return;
+            }
+            return origInfo.apply(console, arguments);
+          };
+        }
+      })();
+    </script>
+    <title>Sallah Mate</title>
+    <meta name="description" content="Daily prayer times tracker with live GPS Qibla compass navigator, Adhan app suspension blocker, strict anti-bypass security, voice recorder Iqamah prayer verification, camera mate verification, spiritual streaks, and context-aware Duas." />
+    <meta property="og:title" content="Sallah Mate" />
+    <meta property="og:description" content="Daily prayer times tracker with live GPS Qibla compass navigator, Adhan app suspension blocker, strict anti-bypass security, voice recorder Iqamah prayer verification, camera mate verification, spiritual streaks, and context-aware Duas." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0c0a09" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SallahMate" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Scheherazade+New:wght@400;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-stone-950 text-stone-100 antialiased selection:bg-emerald-600 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
