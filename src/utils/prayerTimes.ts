@@ -1,4 +1,38 @@
-import { PrayerName, PrayerTimeItem, LocationConfig } from '../types';
+import { PrayerName, PrayerTimeItem, LocationConfig, PrayerAdjustments } from '../types';
+
+export const DEFAULT_PRAYER_ADJUSTMENTS: PrayerAdjustments = {
+  Fajr: 0,
+  Sunrise: 0,
+  Dhuhr: 0,
+  Asr: 0,
+  Maghrib: 0,
+  Isha: 0,
+};
+
+export function getStoredPrayerAdjustments(): PrayerAdjustments {
+  try {
+    const saved = localStorage.getItem('sallah_prayer_adjustments');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        Fajr: typeof parsed.Fajr === 'number' ? parsed.Fajr : 0,
+        Sunrise: typeof parsed.Sunrise === 'number' ? parsed.Sunrise : 0,
+        Dhuhr: typeof parsed.Dhuhr === 'number' ? parsed.Dhuhr : 0,
+        Asr: typeof parsed.Asr === 'number' ? parsed.Asr : 0,
+        Maghrib: typeof parsed.Maghrib === 'number' ? parsed.Maghrib : 0,
+        Isha: typeof parsed.Isha === 'number' ? parsed.Isha : 0,
+      };
+    }
+  } catch {}
+  return { ...DEFAULT_PRAYER_ADJUSTMENTS };
+}
+
+export function savePrayerAdjustments(adjustments: PrayerAdjustments): void {
+  try {
+    localStorage.setItem('sallah_prayer_adjustments', JSON.stringify(adjustments));
+    window.dispatchEvent(new CustomEvent('sallah_prayer_adjustments_changed', { detail: adjustments }));
+  } catch {}
+}
 
 // Preset locations (Nigeria primary defaults and international holy sites)
 export const DEFAULT_NIGERIA_LOCATION: LocationConfig = {
@@ -27,15 +61,21 @@ export const POPULAR_LOCATIONS: LocationConfig[] = [
   { city: 'New York', country: 'United States', latitude: 40.7128, longitude: -74.006, calculationMethod: 'ISNA', asrMethod: 'standard' },
   { city: 'Dubai', country: 'UAE', latitude: 25.2048, longitude: 55.2708, calculationMethod: 'Gulf', asrMethod: 'standard' },
   { city: 'Karachi', country: 'Pakistan', latitude: 24.8607, longitude: 67.0011, calculationMethod: 'Karachi', asrMethod: 'hanafi' },
+  { city: 'Istanbul', country: 'Turkey', latitude: 41.0082, longitude: 28.9784, calculationMethod: 'Diyanet', asrMethod: 'standard' },
+  { city: 'Paris', country: 'France', latitude: 48.8566, longitude: 2.3522, calculationMethod: 'UOIF', asrMethod: 'standard' },
+  { city: 'Singapore', country: 'Singapore', latitude: 1.3521, longitude: 103.8198, calculationMethod: 'MUIS', asrMethod: 'standard' },
 ];
 
 export const CALCULATION_METHODS = [
-  { id: 'MWL', name: 'Muslim World League', fajrAngle: 18, ishaAngle: 17 },
-  { id: 'ISNA', name: 'Islamic Society of North America (ISNA)', fajrAngle: 15, ishaAngle: 15 },
-  { id: 'Egypt', name: 'Egyptian General Authority of Survey', fajrAngle: 19.5, ishaAngle: 17.5 },
-  { id: 'Makkah', name: 'Umm Al-Qura University, Makkah', fajrAngle: 18.5, ishaInterval: 90 },
-  { id: 'Karachi', name: 'University of Islamic Sciences, Karachi', fajrAngle: 18, ishaAngle: 18 },
-  { id: 'Gulf', name: 'Gulf Region', fajrAngle: 19.5, ishaInterval: 90 },
+  { id: 'MWL', name: 'Muslim World League', fajrAngle: 18, ishaAngle: 17, region: 'Europe, Far East, Global' },
+  { id: 'ISNA', name: 'Islamic Society of North America (ISNA)', fajrAngle: 15, ishaAngle: 15, region: 'North America (US & Canada)' },
+  { id: 'Egypt', name: 'Egyptian General Authority of Survey', fajrAngle: 19.5, ishaAngle: 17.5, region: 'Africa, Middle East' },
+  { id: 'Makkah', name: 'Umm Al-Qura University, Makkah', fajrAngle: 18.5, ishaInterval: 90, region: 'Arabian Peninsula' },
+  { id: 'Karachi', name: 'University of Islamic Sciences, Karachi', fajrAngle: 18, ishaAngle: 18, region: 'Pakistan, India, Bangladesh' },
+  { id: 'Gulf', name: 'Gulf Region (UAE, Qatar, Kuwait)', fajrAngle: 19.5, ishaInterval: 90, region: 'Gulf States' },
+  { id: 'Diyanet', name: 'Diyanet İşleri Başkanlığı (Turkey)', fajrAngle: 18, ishaAngle: 17, region: 'Turkey & Balkans' },
+  { id: 'UOIF', name: 'Union des Organisations Islamiques de France (UOIF)', fajrAngle: 12, ishaAngle: 12, region: 'France & Western Europe' },
+  { id: 'MUIS', name: 'Majlis Ugama Islam Singapura (MUIS)', fajrAngle: 20, ishaAngle: 18, region: 'Singapore & Southeast Asia' },
 ];
 
 // Helper: astronomical calculations for solar positions
@@ -80,10 +120,17 @@ function sunCoordinates(d: number): { declination: number; equationOfTime: numbe
 
 export function calculatePrayerTimes(
   date: Date = new Date(),
-  config: LocationConfig = POPULAR_LOCATIONS[0]
+  config: LocationConfig = POPULAR_LOCATIONS[0],
+  customAdjustments?: Partial<PrayerAdjustments>
 ): PrayerTimeItem[] {
   const jd = julianDay(date);
   const { declination, equationOfTime } = sunCoordinates(jd);
+
+  // Active adjustments from storage or passed arguments
+  const activeAdjustments: PrayerAdjustments = {
+    ...getStoredPrayerAdjustments(),
+    ...(customAdjustments || {}),
+  };
 
   // Timezone offset in hours
   const timezone = -date.getTimezoneOffset() / 60;
@@ -135,10 +182,13 @@ export function calculatePrayerTimes(
     ishaTime = noon + ishaHourAngle;
   }
 
-  function formatTime(hours: number): { timeString: string; rawDate: Date } {
-    let h = (hours + 24) % 24;
-    const wholeHours = Math.floor(h);
-    const minutes = Math.floor((h - wholeHours) * 60);
+  function formatTime(hours: number, offsetMinutes: number = 0): { timeString: string; rawDate: Date } {
+    let totalMinutes = Math.round(hours * 60) + offsetMinutes;
+    // Normalize into 24-hour day (1440 minutes)
+    totalMinutes = ((totalMinutes % 1440) + 1440) % 1440;
+
+    const wholeHours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
 
     const d = new Date(date);
     d.setHours(wholeHours, minutes, 0, 0);
@@ -153,12 +203,12 @@ export function calculatePrayerTimes(
     };
   }
 
-  const fajr = formatTime(fajrTime);
-  const sunrise = formatTime(sunriseTime);
-  const dhuhr = formatTime(noon);
-  const asr = formatTime(asrTime);
-  const maghrib = formatTime(maghribTime);
-  const isha = formatTime(ishaTime);
+  const fajr = formatTime(fajrTime, activeAdjustments.Fajr);
+  const sunrise = formatTime(sunriseTime, activeAdjustments.Sunrise);
+  const dhuhr = formatTime(noon, activeAdjustments.Dhuhr);
+  const asr = formatTime(asrTime, activeAdjustments.Asr);
+  const maghrib = formatTime(maghribTime, activeAdjustments.Maghrib);
+  const isha = formatTime(ishaTime, activeAdjustments.Isha);
 
   const now = new Date();
 

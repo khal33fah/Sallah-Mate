@@ -1,6 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Shield, BookOpen, Award, CheckCircle2, Moon, Sparkles, Volume2, Info, Plane, Clock, Unlock, Smartphone, Download, Calendar as CalendarIcon, Bot, Lock, Flame, ShieldAlert, Compass } from 'lucide-react';
-import { PrayerName, VerificationRecord, TravelerSettings, SuspendableApp, VoicePrayerVerificationRecord } from './types';
+import {
+  Camera,
+  Shield,
+  BookOpen,
+  Award,
+  CheckCircle2,
+  Moon,
+  Sparkles,
+  Volume2,
+  Info,
+  Plane,
+  Clock,
+  Unlock,
+  Smartphone,
+  Download,
+  Calendar as CalendarIcon,
+  Bot,
+  Lock,
+  Flame,
+  ShieldAlert,
+  Compass,
+} from 'lucide-react';
+import {
+  PrayerName,
+  VerificationRecord,
+  TravelerSettings,
+  SuspendableApp,
+  LocationConfig,
+} from './types';
+import {
+  DEFAULT_NIGERIA_LOCATION,
+  calculatePrayerTimes,
+  getNextPrayer,
+  playSpiritualChime,
+} from './utils/prayerTimes';
 import { PrayerTimesCard } from './components/PrayerTimesCard';
 import { CameraMateScanner } from './components/CameraMateScanner';
 import { PrayerLockdownMode } from './components/PrayerLockdownMode';
@@ -11,7 +44,6 @@ import { LockScreenAmbientDisplay } from './components/LockScreenAmbientDisplay'
 import { LockScreenSettingsModal } from './components/LockScreenSettingsModal';
 import { AppInstalledWelcomeModal } from './components/AppInstalledWelcomeModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
-import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { AdhanModal } from './components/AdhanModal';
 import { DualCalendarModal } from './components/DualCalendarModal';
@@ -23,6 +55,14 @@ import { SpiritualStreaksModal } from './components/SpiritualStreaksModal';
 import { AppBlockerInterceptorModal } from './components/AppBlockerInterceptorModal';
 import { ContextAwareDuaModal } from './components/ContextAwareDuaModal';
 import { QiblaCompassModal } from './components/QiblaCompassModal';
+import { MobileBottomNav, MobileTab } from './components/MobileBottomNav';
+import { MobileTopBar } from './components/MobileTopBar';
+import { MobileToolsHub } from './components/MobileToolsHub';
+import { MobileQuickActionSheet } from './components/MobileQuickActionSheet';
+import { LocationPickerModal } from './components/LocationPickerModal';
+import { InstallModal } from './components/InstallModal';
+import { PrayerTimeAdjustmentModal } from './components/PrayerTimeAdjustmentModal';
+import { DeviceFrameWrapper } from './components/DeviceFrameWrapper';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import {
   getStoredLockScreenSettings,
@@ -32,9 +72,32 @@ import {
 import { subscribeToAdhanState, isAdhanPlaying } from './services/adhanService';
 import { getStoredAppSuspensionSettings } from './services/appSuspensionService';
 import { recordPrayerStreak, getSpiritualStreakStats } from './services/spiritualStreakService';
-import { playSpiritualChime } from './utils/prayerTimes';
 
 export default function App() {
+  // Mobile Tab Navigation State
+  const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>('prayers');
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState<boolean>(false);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState<boolean>(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
+  const [isPrayerAdjustmentsOpen, setIsPrayerAdjustmentsOpen] = useState<boolean>(false);
+
+  // Selected Location (persisted)
+  const [selectedLocation, setSelectedLocation] = useState<LocationConfig>(() => {
+    try {
+      const saved = localStorage.getItem('sallah_selected_location');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_NIGERIA_LOCATION;
+  });
+
+  const handleSelectLocation = (loc: LocationConfig) => {
+    setSelectedLocation(loc);
+    try {
+      localStorage.setItem('sallah_selected_location', JSON.stringify(loc));
+    } catch {}
+  };
+
+  // Modals & Active Overlays
   const [activeScannerPrayer, setActiveScannerPrayer] = useState<PrayerName | null>(null);
   const [activeLockdownPrayer, setActiveLockdownPrayer] = useState<{ prayer: PrayerName; rakahs: number } | null>(null);
   const [isLedgerOpen, setIsLedgerOpen] = useState<boolean>(false);
@@ -64,6 +127,34 @@ export default function App() {
 
   // PWA Install detection and event handling
   const { isInstallable, isInstalled, isIOS, justInstalled, setJustInstalled, install } = usePWAInstall();
+
+  // Next prayer computation for mobile dynamic status pill
+  const [nextPrayerData, setNextPrayerData] = useState<{
+    name: string;
+    time: string;
+    timeRemaining: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const updateNextPrayer = () => {
+      const times = calculatePrayerTimes(new Date(), selectedLocation);
+      const nextInfo = getNextPrayer(times);
+      if (nextInfo) {
+        setNextPrayerData({
+          name: nextInfo.next.name,
+          time: nextInfo.next.time,
+          timeRemaining: nextInfo.timeRemaining,
+        });
+      }
+    };
+    updateNextPrayer();
+    const interval = setInterval(updateNextPrayer, 30000);
+    window.addEventListener('sallah_prayer_adjustments_changed', updateNextPrayer);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('sallah_prayer_adjustments_changed', updateNextPrayer);
+    };
+  }, [selectedLocation]);
 
   // Traveler journey settings persisted in localStorage
   const [travelerSettings, setTravelerSettings] = useState<TravelerSettings>(() => {
@@ -104,7 +195,6 @@ export default function App() {
     try {
       const saved = localStorage.getItem('sallah_witness_records');
       if (saved) return JSON.parse(saved);
-      // Provide an initial sample verified certificate
       return [
         {
           id: 'initial-sample',
@@ -116,7 +206,7 @@ export default function App() {
           posture: 'Sujud (Prostration observed)',
           confidence: 94,
           witnessStatement:
-            "Witnessed with praise to Allah: Brother Bilal observed Fajr prayer in reverence and stillness on the prayer rug.",
+            'Witnessed with praise to Allah: Brother Bilal observed Fajr prayer in reverence and stillness on the prayer rug.',
           spiritualReflection:
             "The Prophet ﷺ said: 'The two Sunnah Rakahs before Fajr are better than the entire world and whatever is in it.' (Sahih Muslim 725)",
           postureDetails: 'Detected companion in full prostration facing the Qibla.',
@@ -146,7 +236,6 @@ export default function App() {
     if (fiveMinReleaseTimer === null) return;
     if (fiveMinReleaseTimer <= 0) {
       setFiveMinReleaseTimer(null);
-      // Release lockdown if currently active
       if (activeLockdownPrayer) {
         setActiveLockdownPrayer(null);
       }
@@ -180,7 +269,6 @@ export default function App() {
       setCompletedPrayers((prev) => [...prev, record.prayerName]);
     }
     playSpiritualChime('takbeer');
-    // Lock app until authentic post-Sallah Azkar is recited
     setActiveAzkarLockPrayer(record.prayerName);
   };
 
@@ -192,7 +280,6 @@ export default function App() {
     );
     if (isNowObserving) {
       playSpiritualChime('gentle');
-      // Lock app for post-Sallah Azkar recitation
       setActiveAzkarLockPrayer(prayer);
     }
   };
@@ -224,14 +311,10 @@ export default function App() {
       }
     };
 
-    // Check shortly after load and then every 5 minutes
     const initialTimer = setTimeout(checkAndDispatch, 4000);
     const interval = setInterval(checkAndDispatch, 5 * 60 * 1000);
-
-    // Initialize phone power button / lock detection
     const cleanupLockDetector = setupAutomaticLockDetection();
 
-    // Subscribe to Adhan player state and auto-engage lockdown if enabled
     const unsubAdhan = subscribeToAdhanState((playing) => {
       setIsAdhanPlayingState(playing);
       if (playing) {
@@ -250,373 +333,249 @@ export default function App() {
     return () => {
       clearTimeout(initialTimer);
       clearInterval(interval);
-      cleanupLockDetector();
+      cleanupLockDetector?.();
       unsubAdhan();
     };
   }, []);
 
-  const currentHijriEstimate = "Rabi' al-Awwal 1448 AH";
+  // Quick action shortcut dispatcher from MobileQuickActionSheet
+  const handleQuickAction = (key: string) => {
+    switch (key) {
+      case 'scan':
+        setActiveScannerPrayer('Asr');
+        break;
+      case 'lockdown':
+        setActiveLockdownPrayer({ prayer: 'Dhuhr', rakahs: 4 });
+        break;
+      case 'qibla':
+        setActiveMobileTab('qibla');
+        setIsQiblaModalOpen(true);
+        break;
+      case 'dhikr':
+        setActiveMobileTab('dhikr');
+        break;
+      case 'azkar_lock':
+        setActiveAzkarLockPrayer('Fajr');
+        break;
+      case 'journey':
+        setIsTravelerModalOpen(true);
+        break;
+      case 'lockscreen':
+        setIsLockScreenModalOpen(true);
+        break;
+      case 'duas':
+        setActiveDuaPrayer(undefined);
+        setIsDuaModalOpen(true);
+        break;
+      case 'ai_scholar':
+        setIsAIAssistantOpen(true);
+        break;
+      case 'calendar':
+        setIsCalendarModalOpen(true);
+        break;
+      case 'adjustments':
+        setIsPrayerAdjustmentsOpen(true);
+        break;
+      case 'install':
+        if (isInstallable) {
+          install().then((success) => {
+            if (!success) setIsInstallModalOpen(true);
+          });
+        } else {
+          setIsInstallModalOpen(true);
+        }
+        break;
+      default:
+        break;
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 font-sans-custom pb-16">
-      {/* Khushu Distraction-Free Lockdown Mode (Fullscreen overlay) */}
-      {activeLockdownPrayer && (
-        <PrayerLockdownMode
-          prayerName={activeLockdownPrayer.prayer}
-          rakahs={activeLockdownPrayer.rakahs}
-          onComplete={() => {
-            const finishedPrayer = activeLockdownPrayer.prayer;
-            if (!completedPrayers.includes(finishedPrayer)) {
-              setCompletedPrayers((prev) => [...prev, finishedPrayer]);
-            }
-            setActiveLockdownPrayer(null);
-            // Record prayer streak
-            recordPrayerStreak(finishedPrayer, true, true, false);
-            setStreakStats(getSpiritualStreakStats());
-            // Lock app until user recites their post-Sallah Azkar
-            setActiveAzkarLockPrayer(finishedPrayer);
+    <DeviceFrameWrapper>
+      <div className="flex-1 flex flex-col w-full pb-safe-nav">
+        {/* Native Mobile Top Bar with Status and Dynamic Island */}
+        <MobileTopBar
+          currentLocation={selectedLocation}
+          onOpenLocationPicker={() => setIsLocationPickerOpen(true)}
+          nextPrayerName={nextPrayerData?.name}
+          nextPrayerTime={nextPrayerData?.time}
+          timeRemaining={nextPrayerData?.timeRemaining}
+          isAdhanPlaying={isAdhanPlayingState}
+          onOpenAdhanModal={() => {
+            setAdhanModalInitialPrayer(undefined);
+            setIsAdhanModalOpen(true);
           }}
-          onExit={() => setActiveLockdownPrayer(null)}
-          travelerSettings={travelerSettings}
-          onOpenTravelerSettings={() => setIsTravelerModalOpen(true)}
-          activeReleaseTimerRemaining={fiveMinReleaseTimer}
-          onStartFiveMinTimer={handleStart5MinTimer}
-          onCancelFiveMinTimer={handleCancel5MinTimer}
-          onOpenSuspensionSettings={() => setIsSuspensionSettingsOpen(true)}
-          onVoiceVerificationComplete={(record: VoicePrayerVerificationRecord) => {
-            recordPrayerStreak(record.prayerName, true, true, false);
-            setStreakStats(getSpiritualStreakStats());
-          }}
+          streakDays={streakStats.currentStreakDays}
+          onOpenStreaksModal={() => setIsStreaksModalOpen(true)}
+          onOpenQuickMenu={() => setIsQuickMenuOpen(true)}
+          journeyTimerSeconds={fiveMinReleaseTimer}
+          onCancelJourneyTimer={handleCancel5MinTimer}
+          onReleaseJourneyTimerNow={() => setFiveMinReleaseTimer(0)}
         />
-      )}
 
-      {/* Post-Sallah Azkar Gate: App only accessible after reciting Azkar after finishing Sallah */}
-      {activeAzkarLockPrayer && (
-        <PostSallahAzkarLockModal
-          prayerName={activeAzkarLockPrayer}
-          onUnlocked={() => {
-            if (activeAzkarLockPrayer) {
-              recordPrayerStreak(activeAzkarLockPrayer, true, true, true);
-              setStreakStats(getSpiritualStreakStats());
-            }
-            setActiveAzkarLockPrayer(null);
-            playSpiritualChime('takbeer');
-          }}
-          onEmergencyBypass={() => {
-            setActiveAzkarLockPrayer(null);
-          }}
-        />
-      )}
-
-      {/* Top Navigation Bar */}
-      <header className="border-b border-stone-800/80 bg-stone-950/80 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-inner">
-              <Moon className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-lg tracking-tight text-white">
-                  Sallah<span className="text-emerald-400">Mate</span>
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-500/30 text-emerald-300 font-semibold uppercase tracking-wider">
-                  Prayer & Witness
-                </span>
-                {travelerSettings.isTraveler && (
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/60 border border-emerald-500/40 text-emerald-300 font-medium">
-                    <Plane className="w-3 h-3" />
-                    Journey Mode
-                  </span>
-                )}
+        {/* Release Notification Flash */}
+        {releaseNotification && (
+          <div className="px-4 mt-3">
+            <div className="p-3 bg-emerald-950 border border-emerald-500/50 text-emerald-200 rounded-2xl flex items-center justify-between text-xs animate-in fade-in slide-in-from-top-2 shadow-lg">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{releaseNotification}</span>
               </div>
-              <p className="text-[11px] text-stone-400">
-                Daily Sallah Tracker • Camera Mate Verification • Khushu Lockdown • Journey Concessions
-              </p>
+              <button
+                onClick={() => setReleaseNotification(null)}
+                className="text-stone-400 hover:text-white text-xs px-2 py-0.5 rounded-lg bg-stone-900 ml-2"
+              >
+                Dismiss
+              </button>
             </div>
           </div>
+        )}
 
-          {/* Header Action Buttons */}
-          <div className="flex items-center space-x-2">
-            {/* Install on Device button if installable */}
-            {(isInstallable || isIOS) && !isInstalled && (
-              <button
-                id="header-install-pwa-btn"
-                onClick={async () => {
+        {/* Main Content Area switching smoothly based on activeMobileTab */}
+        <main className="flex-1 px-4 pt-4">
+          {/* TAB 1: Prayers Dashboard */}
+          {activeMobileTab === 'prayers' && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <PrayerTimesCard
+                onStartScanner={(prayer) => setActiveScannerPrayer(prayer)}
+                onStartLockdown={(prayer, rakahs) => {
+                  const adjustedRakahs =
+                    travelerSettings.isTraveler && travelerSettings.shortenPrayers && rakahs === 4
+                      ? 2
+                      : rakahs;
+                  setActiveLockdownPrayer({ prayer, rakahs: adjustedRakahs });
+                }}
+                verificationRecords={verificationRecords}
+                onToggleManualStatus={handleToggleManualStatus}
+                completedPrayers={completedPrayers}
+                travelerSettings={travelerSettings}
+                selectedLocation={selectedLocation}
+                onSelectLocation={handleSelectLocation}
+                onOpenPrayerAdjustments={() => setIsPrayerAdjustmentsOpen(true)}
+                onOpenTravelerSettings={() => setIsTravelerModalOpen(true)}
+                onOpenLockScreenModal={() => setIsLockScreenModalOpen(true)}
+                onOpenAdhanModal={(prayer) => {
+                  setAdhanModalInitialPrayer(prayer);
+                  setIsAdhanModalOpen(true);
+                }}
+                onOpenAIAssistant={() => setIsAIAssistantOpen(true)}
+                onTriggerAzkarLock={(prayer) => setActiveAzkarLockPrayer(prayer)}
+                onOpenSuspensionSettings={() => setIsSuspensionSettingsOpen(true)}
+                onOpenStreaksModal={() => setIsStreaksModalOpen(true)}
+                onOpenDuaModal={(prayer) => {
+                  setActiveDuaPrayer(prayer);
+                  setIsDuaModalOpen(true);
+                }}
+                onOpenQiblaCompass={() => setIsQiblaModalOpen(true)}
+              />
+
+              {/* Install PWA Banner */}
+              <PWAInstallBanner onOpenLockScreenSettings={() => setIsLockScreenModalOpen(true)} />
+            </div>
+          )}
+
+          {/* TAB 2: Daily Dhikr & Remembrances */}
+          {activeMobileTab === 'dhikr' && (
+            <div className="animate-in fade-in duration-200">
+              <DailyDhikrModule />
+            </div>
+          )}
+
+          {/* TAB 3: Qibla Kaaba Navigator */}
+          {activeMobileTab === 'qibla' && (
+            <div className="animate-in fade-in duration-200">
+              <div className="p-4 rounded-3xl bg-stone-900/90 border border-stone-800 shadow-xl space-y-4 text-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto shadow-inner">
+                  <Compass className="w-8 h-8 animate-spin" style={{ animationDuration: '10s' }} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-extrabold text-white">Qibla Direction Navigator</h2>
+                  <p className="text-xs text-stone-400 mt-1">
+                    Live GPS compass pointing straight to the Holy Kaaba in Mecca
+                  </p>
+                </div>
+                <button
+                  id="tab-open-qibla-fullscreen-btn"
+                  onClick={() => setIsQiblaModalOpen(true)}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition touch-press shadow-lg shadow-emerald-950 flex items-center justify-center gap-2"
+                >
+                  <Compass className="w-4 h-4" />
+                  <span>Open Fullscreen Interactive Compass</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: Islamic Library (114 Surahs, Hadith, Books) */}
+          {activeMobileTab === 'library' && (
+            <div className="animate-in fade-in duration-200">
+              <IslamicLibrary />
+            </div>
+          )}
+
+          {/* TAB 5: Protection & Tools Hub */}
+          {activeMobileTab === 'tools' && (
+            <div className="animate-in fade-in duration-200">
+              <MobileToolsHub
+                onOpenPrayerAdjustments={() => setIsPrayerAdjustmentsOpen(true)}
+                onOpenSuspensionSettings={() => setIsSuspensionSettingsOpen(true)}
+                onOpenAzkarLock={() => setActiveAzkarLockPrayer('Fajr')}
+                onOpenTravelerSettings={() => setIsTravelerModalOpen(true)}
+                onOpenLockScreenModal={() => setIsLockScreenModalOpen(true)}
+                onOpenCalendarModal={() => setIsCalendarModalOpen(true)}
+                onOpenLedger={() => setIsLedgerOpen(true)}
+                onOpenDuaModal={() => {
+                  setActiveDuaPrayer(undefined);
+                  setIsDuaModalOpen(true);
+                }}
+                onOpenAIAssistant={() => setIsAIAssistantOpen(true)}
+                onInstallApp={async () => {
                   if (isInstallable) {
-                    await install();
+                    const success = await install();
+                    if (!success) setIsInstallModalOpen(true);
                   } else {
-                    setIsLockScreenModalOpen(true);
+                    setIsInstallModalOpen(true);
                   }
                 }}
-                className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-900/50 hover:bg-emerald-800 border border-emerald-500/40 text-emerald-200 text-xs font-semibold transition"
-                title="Install Sallah Mate on your device for lock screen Ayahs"
-              >
-                <Download className="w-4 h-4 text-emerald-400" />
-                <span className="hidden sm:inline">Install App</span>
-              </button>
-            )}
-
-            {/* Ask Islamic AI Assistant Trigger */}
-            <button
-              id="header-ai-assistant-btn"
-              onClick={() => setIsAIAssistantOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 hover:text-white text-xs font-semibold transition shadow-sm"
-              title="Ask Islamic AI Scholar about prayer fiqh, Hadith, Sunnah, and Azkar"
-            >
-              <Bot className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Ask AI</span>
-            </button>
-
-            {/* Spiritual Streaks Trigger */}
-            <button
-              id="header-streaks-btn"
-              onClick={() => setIsStreaksModalOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-amber-950/80 hover:bg-amber-900 border border-amber-500/50 text-amber-300 hover:text-white text-xs font-semibold transition shadow-sm"
-              title="Daily, Weekly & Monthly Spiritual Streaks & Closeness to Allah"
-            >
-              <Flame className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">Streaks</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-amber-900 text-amber-200 text-[10px] font-bold border border-amber-500/40">
-                {streakStats.currentStreakDays}d
-              </span>
-            </button>
-
-            {/* App Suspension & Anti-Bypass Header Trigger */}
-            <button
-              id="header-suspension-settings-btn"
-              onClick={() => setIsSuspensionSettingsOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-300 hover:text-white text-xs font-semibold transition shadow-sm"
-              title="Configure Apps Suspended on Adhan & Strict Anti-Bypass Security"
-            >
-              <ShieldAlert className="w-4 h-4 text-rose-400" />
-              <span className="hidden sm:inline">App Blocker</span>
-            </button>
-
-            {/* Post-Sallah Azkar Lock Trigger */}
-            <button
-              id="header-azkar-lock-btn"
-              onClick={() => setActiveAzkarLockPrayer('Fajr')}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 border border-emerald-500/40 text-stone-200 hover:text-white text-xs font-semibold transition"
-              title="Lock app for authentic Post-Sallah Sunnah Azkar recitation"
-            >
-              <Lock className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Azkar Lock</span>
-            </button>
-
-            {/* Dual Calendar Header Trigger */}
-            <button
-              id="header-calendar-toggle-btn"
-              onClick={() => setIsCalendarModalOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 border border-emerald-500/40 text-stone-200 hover:text-white text-xs font-semibold transition"
-              title="Islamic Hijri & Western Gregorian Dual Calendar"
-            >
-              <CalendarIcon className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Calendar</span>
-            </button>
-
-            {/* Daily Dhikr Header Trigger */}
-            <button
-              id="header-dhikr-toggle-btn"
-              onClick={() => {
-                document.getElementById('daily-dhikr-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-semibold transition"
-              title="Daily Dhikr: Count recommended daily remembrances & learn spiritual benefits"
-            >
-              <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Daily Dhikr</span>
-            </button>
-
-            {/* Call to Prayer (Adhan) Header Trigger */}
-            <button
-              id="header-adhan-toggle-btn"
-              onClick={() => {
-                setAdhanModalInitialPrayer(undefined);
-                setIsAdhanModalOpen(true);
-              }}
-              className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition ${
-                isAdhanPlayingState
-                  ? 'bg-emerald-600 border-emerald-400 text-white animate-pulse shadow-lg shadow-emerald-950'
-                  : 'bg-stone-900 hover:bg-stone-800 border-stone-800 text-stone-300'
-              }`}
-              title="Call to Prayer (Adhan) settings, Muezzin reciters, and audio controls"
-            >
-              <Volume2 className={`w-4 h-4 ${isAdhanPlayingState ? 'text-white animate-bounce' : 'text-emerald-400'}`} />
-              <span className="hidden sm:inline">Call to Prayer</span>
-              {isAdhanPlayingState && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-bold uppercase tracking-wider">
-                  Live
-                </span>
-              )}
-            </button>
-
-            {/* PWA Install Button */}
-            <PWAInstallButton />
-
-            {/* Lock Screen Display Header Trigger */}
-            <button
-              id="header-lockscreen-toggle-btn"
-              onClick={() => setIsLockScreenModalOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-semibold transition relative"
-              title="Display Ayahs on lock screen: reminding of Allah, Dunya & Iman"
-            >
-              <Smartphone className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Lock Screen Ayahs</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute -top-0.5 -right-0.5" />
-              <span className="w-2 h-2 rounded-full bg-emerald-400 absolute -top-0.5 -right-0.5" />
-            </button>
-
-            {/* Context-Aware Prayer Duas Header Trigger */}
-            <button
-              id="header-prayer-duas-btn"
-              onClick={() => {
-                setActiveDuaPrayer(undefined);
-                setIsDuaModalOpen(true);
-              }}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-teal-950/70 hover:bg-teal-900/80 border border-teal-500/50 text-xs font-semibold text-teal-200 transition shadow-sm"
-              title="Context-aware Pre-Sallah, During Sallah and Post-Sallah Supplications"
-            >
-              <BookOpen className="w-4 h-4 text-teal-400" />
-              <span className="hidden sm:inline">Prayer Duas</span>
-            </button>
-
-            {/* Qibla Direction Navigator Header Button */}
-            <button
-              id="header-qibla-finder-btn"
-              onClick={() => setIsQiblaModalOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/50 text-xs font-semibold text-emerald-200 transition shadow-sm"
-              title="Navigate towards the Holy Kaaba in Mecca with live GPS & Compass"
-            >
-              <Compass className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Qibla Finder</span>
-            </button>
-
-            {/* Traveler Journey Mode Header Trigger */}
-            <button
-              id="header-traveler-toggle-btn"
-              onClick={() => setIsTravelerModalOpen(true)}
-              className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition ${
-                travelerSettings.isTraveler
-                  ? 'bg-emerald-900/60 border-emerald-500/60 text-emerald-200 shadow-sm'
-                  : 'bg-stone-900 hover:bg-stone-800 border-stone-800 text-stone-300'
-              }`}
-              title="Journey Options: tap to continue using app or put 5-minute timer to release suspended apps"
-            >
-              <Plane className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Journey Mode</span>
-              {travelerSettings.isTraveler && (
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              )}
-            </button>
-
-            <button
-              id="view-witness-ledger-btn"
-              onClick={() => setIsLedgerOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 border border-stone-800 text-xs font-medium text-stone-200 transition"
-              title="View Witness Certificates"
-            >
-              <Award className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Witness Records</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                {verificationRecords.length}
-              </span>
-            </button>
-
-            <button
-              id="open-scanner-quick-btn"
-              onClick={() => setActiveScannerPrayer('Asr')}
-              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition shadow-sm"
-            >
-              <Camera className="w-4 h-4" />
-              <span className="hidden sm:inline">Scan Praying Mate</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Floating 5-Minute Release Timer Banner if Active */}
-      {fiveMinReleaseTimer !== null && (
-        <div className="bg-amber-950/90 border-b border-amber-500/50 text-amber-200 px-4 py-2.5 backdrop-blur-md sticky top-[61px] z-30 flex items-center justify-between shadow-lg">
-          <div className="flex items-center space-x-2 text-xs">
-            <Clock className="w-4 h-4 text-amber-400 animate-spin" />
-            <span>
-              <strong>Journey Release Timer Running:</strong> All suspended phone apps and notifications will be released in{' '}
-              <strong className="font-mono text-white text-sm">
-                {Math.floor(fiveMinReleaseTimer / 60)}:{(fiveMinReleaseTimer % 60).toString().padStart(2, '0')}
-              </strong>
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              id="cancel-active-timer-btn"
-              onClick={handleCancel5MinTimer}
-              className="px-2.5 py-1 bg-stone-900 hover:bg-stone-800 text-stone-300 rounded text-xs transition"
-            >
-              Cancel
-            </button>
-            <button
-              id="release-now-early-btn"
-              onClick={() => {
-                setFiveMinReleaseTimer(0);
-              }}
-              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold transition flex items-center gap-1"
-            >
-              <Unlock className="w-3.5 h-3.5" />
-              Release Now
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Release Notification Flash */}
-      {releaseNotification && (
-        <div className="max-w-7xl mx-auto px-4 mt-4">
-          <div className="p-3.5 bg-emerald-950 border border-emerald-500/50 text-emerald-200 rounded-2xl flex items-center justify-between text-xs animate-in fade-in slide-in-from-top-2">
-            <div className="flex items-center space-x-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>{releaseNotification}</span>
+                isInstallable={isInstallable}
+                isInstalled={isInstalled}
+                travelerSettings={travelerSettings}
+                verificationRecordsCount={verificationRecords.length}
+                streakDays={streakStats.currentStreakDays}
+              />
             </div>
-            <button
-              onClick={() => setReleaseNotification(null)}
-              className="text-stone-400 hover:text-white text-xs px-2 py-0.5 rounded bg-stone-900"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
+          )}
+        </main>
 
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-8">
-        {/* PWA Install Banner for Lock Screen Display */}
-        <PWAInstallBanner onOpenLockScreenSettings={() => setIsLockScreenModalOpen(true)} />
+        {/* Mobile Native Bottom Navigation Bar */}
+        <MobileBottomNav
+          activeTab={activeMobileTab}
+          onTabChange={(tab) => setActiveMobileTab(tab)}
+          completedPrayersCount={completedPrayers.length}
+          isBlockerActive={true}
+          isTravelerActive={travelerSettings.isTraveler}
+        />
 
-        {/* Quick Informational Notice on Features */}
-        <div className="bg-stone-900/40 border border-stone-800/80 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs text-stone-300">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-950 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-semibold text-emerald-300">Islamic Mutual Sallah Witnessing & Journey Concessions:</span>
-              <span className="text-stone-400 ml-1">
-                Scan your companion with camera to verify Sallah. If on a journey, tap Journey Mode to continue using the app freely or set a 5-minute timer to release all suspended apps.
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <span className="text-stone-400 font-mono">
-              Completed Today: <strong className="text-emerald-300">{completedPrayers.length}/5</strong>
-            </span>
-          </div>
-        </div>
+        {/* Mobile Quick Action Sheet Modal */}
+        <MobileQuickActionSheet
+          isOpen={isQuickMenuOpen}
+          onClose={() => setIsQuickMenuOpen(false)}
+          onAction={handleQuickAction}
+        />
+
+        {/* Location Picker Sheet Modal */}
+        <LocationPickerModal
+          isOpen={isLocationPickerOpen}
+          onClose={() => setIsLocationPickerOpen(false)}
+          selectedLocation={selectedLocation}
+          onSelectLocation={handleSelectLocation}
+        />
 
         {/* Modal: Camera Prayer Mate Scanner */}
         {activeScannerPrayer && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-            <div className="max-w-3xl w-full my-8">
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+            <div className="w-full max-w-lg bg-stone-950 border border-stone-800 rounded-t-[32px] sm:rounded-3xl p-4 shadow-2xl animate-sheet-up">
+              <div className="w-12 h-1.5 rounded-full bg-stone-700 mx-auto mb-3" />
               <CameraMateScanner
                 prayerName={activeScannerPrayer}
                 onVerificationComplete={handleVerificationComplete}
@@ -626,198 +585,195 @@ export default function App() {
           </div>
         )}
 
-        {/* Section 1: Prayer Times Dashboard Card */}
-        <section id="prayer-times-section">
-          <PrayerTimesCard
-            onStartScanner={(prayer) => setActiveScannerPrayer(prayer)}
-            onStartLockdown={(prayer, rakahs) => {
-              // If traveler and shortens prayers, 4-rakah prayers become 2
-              const adjustedRakahs =
-                travelerSettings.isTraveler && travelerSettings.shortenPrayers && rakahs === 4
-                  ? 2
-                  : rakahs;
-              setActiveLockdownPrayer({ prayer, rakahs: adjustedRakahs });
+        {/* Fullscreen Prayer Lockdown Mode */}
+        {activeLockdownPrayer && (
+          <PrayerLockdownMode
+            prayerName={activeLockdownPrayer.prayer}
+            rakahs={activeLockdownPrayer.rakahs}
+            onComplete={() => {
+              if (!completedPrayers.includes(activeLockdownPrayer.prayer)) {
+                setCompletedPrayers((prev) => [...prev, activeLockdownPrayer.prayer]);
+                recordPrayerStreak(activeLockdownPrayer.prayer, true, false, false);
+                setStreakStats(getSpiritualStreakStats());
+              }
+              const p = activeLockdownPrayer.prayer;
+              setActiveLockdownPrayer(null);
+              playSpiritualChime('takbeer');
+              setActiveAzkarLockPrayer(p);
             }}
-            verificationRecords={verificationRecords}
-            onToggleManualStatus={handleToggleManualStatus}
-            completedPrayers={completedPrayers}
-            travelerSettings={travelerSettings}
-            onOpenTravelerSettings={() => setIsTravelerModalOpen(true)}
-            onOpenLockScreenModal={() => setIsLockScreenModalOpen(true)}
-            onOpenAdhanModal={(prayer) => {
-              setAdhanModalInitialPrayer(prayer);
-              setIsAdhanModalOpen(true);
+            onExit={() => {
+              setActiveLockdownPrayer(null);
             }}
-            onOpenAIAssistant={() => setIsAIAssistantOpen(true)}
-            onTriggerAzkarLock={(prayer) => setActiveAzkarLockPrayer(prayer)}
-            onOpenSuspensionSettings={() => setIsSuspensionSettingsOpen(true)}
-            onOpenStreaksModal={() => setIsStreaksModalOpen(true)}
-            onOpenDuaModal={(prayer) => {
-              setActiveDuaPrayer(prayer);
-              setIsDuaModalOpen(true);
-            }}
-            onOpenQiblaCompass={() => setIsQiblaModalOpen(true)}
           />
-        </section>
+        )}
 
-        {/* Section 2: Daily Dhikr & Remembrances Counter */}
-        <section id="daily-dhikr-section">
-          <DailyDhikrModule />
-        </section>
+        {/* Post-Sallah Authentic Sunnah Azkar Lock Modal */}
+        {activeAzkarLockPrayer && (
+          <PostSallahAzkarLockModal
+            prayerName={activeAzkarLockPrayer}
+            onUnlocked={() => {
+              if (!completedPrayers.includes(activeAzkarLockPrayer)) {
+                setCompletedPrayers((prev) => [...prev, activeAzkarLockPrayer]);
+                recordPrayerStreak(activeAzkarLockPrayer, true, false, true);
+                setStreakStats(getSpiritualStreakStats());
+              }
+              setActiveAzkarLockPrayer(null);
+              playSpiritualChime('takbeer');
+            }}
+            onEmergencyBypass={() => {
+              setActiveAzkarLockPrayer(null);
+            }}
+          />
+        )}
 
-        {/* Section 3: Islamic Wisdom Library (Quran, Hadith, Books, AI Scholar) */}
-        <section id="islamic-library-section">
-          <IslamicLibrary />
-        </section>
-      </main>
+        {/* App Suspension & Anti-Bypass Settings Modal */}
+        {isSuspensionSettingsOpen && (
+          <AppSuspensionSettingsModal
+            onClose={() => setIsSuspensionSettingsOpen(false)}
+            onSimulateAppBlock={(app) => setInterceptedApp(app)}
+          />
+        )}
 
-      {/* App Suspension & Anti-Bypass Settings Modal */}
-      {isSuspensionSettingsOpen && (
-        <AppSuspensionSettingsModal
-          onClose={() => setIsSuspensionSettingsOpen(false)}
-          onSimulateAppBlock={(app) => setInterceptedApp(app)}
+        {/* Spiritual Streaks & Closeness to Allah Modal */}
+        {isStreaksModalOpen && (
+          <SpiritualStreaksModal
+            onClose={() => {
+              setIsStreaksModalOpen(false);
+              setStreakStats(getSpiritualStreakStats());
+            }}
+            onOpenAzkarLock={(prayer) => setActiveAzkarLockPrayer(prayer)}
+            onOpenScanner={(prayer) => setActiveScannerPrayer(prayer)}
+          />
+        )}
+
+        {/* Context-Aware Prayer Duas & Supplications Modal */}
+        <ContextAwareDuaModal
+          isOpen={isDuaModalOpen}
+          onClose={() => setIsDuaModalOpen(false)}
+          initialPrayer={activeDuaPrayer}
         />
-      )}
 
-      {/* Spiritual Streaks & Closeness to Allah Modal */}
-      {isStreaksModalOpen && (
-        <SpiritualStreaksModal
-          onClose={() => {
-            setIsStreaksModalOpen(false);
-            setStreakStats(getSpiritualStreakStats());
+        {/* Qibla Direction Navigator Modal */}
+        <QiblaCompassModal
+          isOpen={isQiblaModalOpen}
+          onClose={() => setIsQiblaModalOpen(false)}
+          currentLocation={selectedLocation}
+        />
+
+        {/* App Blocker Interceptor Modal (Shown when opening a suspended app during prayer) */}
+        {interceptedApp && (
+          <AppBlockerInterceptorModal
+            app={interceptedApp}
+            onGoPray={() => {
+              setInterceptedApp(null);
+              setActiveLockdownPrayer({ prayer: 'Dhuhr', rakahs: 4 });
+            }}
+            onClose={() => setInterceptedApp(null)}
+          />
+        )}
+
+        {/* Call to Prayer (Adhan) Modal */}
+        {isAdhanModalOpen && (
+          <AdhanModal
+            initialPrayer={adhanModalInitialPrayer}
+            onClose={() => setIsAdhanModalOpen(false)}
+          />
+        )}
+
+        {/* Verification Certificates Modal */}
+        {isLedgerOpen && (
+          <VerificationLedgerModal
+            records={verificationRecords}
+            onClose={() => setIsLedgerOpen(false)}
+            onClearRecords={handleClearRecords}
+          />
+        )}
+
+        {/* Traveler Journey Concessions Modal */}
+        {isTravelerModalOpen && (
+          <TravelerJourneyModal
+            settings={travelerSettings}
+            onUpdateSettings={(newSettings) => setTravelerSettings(newSettings)}
+            onClose={() => setIsTravelerModalOpen(false)}
+            onTriggerFiveMinTimer={handleStart5MinTimer}
+            onOpenQiblaNavigator={() => setIsQiblaModalOpen(true)}
+          />
+        )}
+
+        {/* Lock Screen Settings & Ayah Gallery Modal */}
+        {isLockScreenModalOpen && (
+          <LockScreenSettingsModal
+            onClose={() => setIsLockScreenModalOpen(false)}
+            onOpenAmbientDisplay={(ayahId) => {
+              setAmbientInitialAyahId(ayahId);
+              setIsAmbientDisplayOpen(true);
+            }}
+          />
+        )}
+
+        {/* Ambient Fullscreen Standby Bedside Lock Screen Mode */}
+        {isAmbientDisplayOpen && (
+          <LockScreenAmbientDisplay
+            onClose={() => setIsAmbientDisplayOpen(false)}
+            initialAyahId={ambientInitialAyahId}
+          />
+        )}
+
+        {/* App Installed Welcome Modal */}
+        {justInstalled && (
+          <AppInstalledWelcomeModal
+            onClose={() => setJustInstalled(false)}
+            onOpenAmbientDisplay={() => {
+              setJustInstalled(false);
+              setIsAmbientDisplayOpen(true);
+            }}
+            onOpenSettings={() => {
+              setJustInstalled(false);
+              setIsLockScreenModalOpen(true);
+            }}
+          />
+        )}
+
+        {/* Dual Islamic Hijri & Western Calendar Modal */}
+        <DualCalendarModal
+          isOpen={isCalendarModalOpen}
+          onClose={() => setIsCalendarModalOpen(false)}
+        />
+
+        {/* Islamic AI Scholar Assistant Modal */}
+        <IslamicAIAssistantModal
+          isOpen={isAIAssistantOpen}
+          onClose={() => setIsAIAssistantOpen(false)}
+        />
+
+        {/* Dedicated Android & iOS Install Modal */}
+        <InstallModal
+          isOpen={isInstallModalOpen}
+          onClose={() => setIsInstallModalOpen(false)}
+        />
+
+        {/* Dedicated Prayer Times Adjustment Modal */}
+        <PrayerTimeAdjustmentModal
+          isOpen={isPrayerAdjustmentsOpen}
+          onClose={() => setIsPrayerAdjustmentsOpen(false)}
+          locationConfig={selectedLocation}
+          onUpdateLocationConfig={handleSelectLocation}
+          onAdjustmentsChange={() => {
+            const times = calculatePrayerTimes(new Date(), selectedLocation);
+            const nextInfo = getNextPrayer(times);
+            if (nextInfo) {
+              setNextPrayerData({
+                name: nextInfo.next.name,
+                time: nextInfo.next.time,
+                timeRemaining: nextInfo.timeRemaining,
+              });
+            }
           }}
-          onOpenAzkarLock={(prayer) => setActiveAzkarLockPrayer(prayer)}
-          onOpenScanner={(prayer) => setActiveScannerPrayer(prayer)}
         />
-      )}
 
-      {/* Context-Aware Prayer Duas & Supplications Modal */}
-      <ContextAwareDuaModal
-        isOpen={isDuaModalOpen}
-        onClose={() => setIsDuaModalOpen(false)}
-        initialPrayer={activeDuaPrayer}
-      />
-
-      {/* Qibla Direction Navigator Modal */}
-      <QiblaCompassModal
-        isOpen={isQiblaModalOpen}
-        onClose={() => setIsQiblaModalOpen(false)}
-      />
-
-      {/* App Blocker Interceptor Modal (Shown when opening a suspended app during prayer) */}
-      {interceptedApp && (
-        <AppBlockerInterceptorModal
-          app={interceptedApp}
-          onGoPray={() => {
-            setInterceptedApp(null);
-            setActiveLockdownPrayer({ prayer: 'Dhuhr', rakahs: 4 });
-          }}
-          onClose={() => setInterceptedApp(null)}
-        />
-      )}
-
-      {/* Call to Prayer (Adhan) Modal */}
-      {isAdhanModalOpen && (
-        <AdhanModal
-          initialPrayer={adhanModalInitialPrayer}
-          onClose={() => setIsAdhanModalOpen(false)}
-        />
-      )}
-
-      {/* Verification Certificates Modal */}
-      {isLedgerOpen && (
-        <VerificationLedgerModal
-          records={verificationRecords}
-          onClose={() => setIsLedgerOpen(false)}
-          onClearRecords={handleClearRecords}
-        />
-      )}
-
-      {/* Traveler Journey Concessions Modal */}
-      {isTravelerModalOpen && (
-        <TravelerJourneyModal
-          settings={travelerSettings}
-          onUpdateSettings={(newSettings) => setTravelerSettings(newSettings)}
-          onClose={() => setIsTravelerModalOpen(false)}
-          onTriggerFiveMinTimer={handleStart5MinTimer}
-          onOpenQiblaNavigator={() => setIsQiblaModalOpen(true)}
-        />
-      )}
-
-      {/* Lock Screen Settings & Ayah Gallery Modal */}
-      {isLockScreenModalOpen && (
-        <LockScreenSettingsModal
-          onClose={() => setIsLockScreenModalOpen(false)}
-          onOpenAmbientDisplay={(ayahId) => {
-            setAmbientInitialAyahId(ayahId);
-            setIsAmbientDisplayOpen(true);
-          }}
-        />
-      )}
-
-      {/* Ambient Fullscreen Standby Bedside Lock Screen Mode */}
-      {isAmbientDisplayOpen && (
-        <LockScreenAmbientDisplay
-          onClose={() => setIsAmbientDisplayOpen(false)}
-          initialAyahId={ambientInitialAyahId}
-        />
-      )}
-
-      {/* App Installed Welcome Modal */}
-      {justInstalled && (
-        <AppInstalledWelcomeModal
-          onClose={() => setJustInstalled(false)}
-          onOpenAmbientDisplay={() => {
-            setJustInstalled(false);
-            setIsAmbientDisplayOpen(true);
-          }}
-          onOpenSettings={() => {
-            setJustInstalled(false);
-            setIsLockScreenModalOpen(true);
-          }}
-        />
-      )}
-
-      {/* Dual Islamic Hijri & Western Calendar Modal */}
-      <DualCalendarModal
-        isOpen={isCalendarModalOpen}
-        onClose={() => setIsCalendarModalOpen(false)}
-      />
-
-      {/* Islamic AI Scholar Assistant Modal */}
-      <IslamicAIAssistantModal
-        isOpen={isAIAssistantOpen}
-        onClose={() => setIsAIAssistantOpen(false)}
-      />
-
-      {/* Floating Islamic AI Assistant Widget Button */}
-      <div className="fixed bottom-6 right-6 z-30">
-        <button
-          id="floating-ai-assistant-btn"
-          onClick={() => setIsAIAssistantOpen(true)}
-          className="group flex items-center gap-2.5 px-4 py-3 rounded-full bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-2xl shadow-emerald-950 border border-emerald-400/50 transition-all duration-200 active:scale-95 hover:scale-105"
-          title="Ask Islamic AI Scholar about prayer fiqh, Hadith, Sunnah, and Azkar"
-        >
-          <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
-            <Bot className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-xs font-bold tracking-wide">Ask AI Scholar</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
-        </button>
+        {/* Offline connectivity indicator */}
+        <OfflineIndicator />
       </div>
-
-      {/* Offline connectivity indicator */}
-      <OfflineIndicator />
-
-      {/* Clean, respectful footer */}
-      <footer className="mt-16 text-center text-xs text-stone-500 py-6 border-t border-stone-900 max-w-7xl mx-auto px-4">
-        <p className="font-serif italic text-stone-400">
-          "Indeed, prayer prohibits immorality and wrongdoing, and the remembrance of Allah is greater."
-        </p>
-        <p className="mt-1 text-[11px] text-stone-500">
-          Surah Al-Ankabut (29:45) • Sallah Mate Prayer Verification & Distraction Shield
-        </p>
-      </footer>
-    </div>
+    </DeviceFrameWrapper>
   );
 }

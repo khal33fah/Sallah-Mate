@@ -50,6 +50,34 @@ export default defineConfig(() => {
           enabled: false,
         },
       }),
+      {
+        name: 'safe-ws-plugin',
+        transform(code: string, id: string) {
+          if (id.includes('client.mjs') || id.includes('bundledDevClient.mjs') || id.includes('@vite/client')) {
+            return code.replace(/ws\.send\(JSON\.stringify\(data\)\);/g, 'if (ws && ws.readyState === ws.OPEN) { ws.send(JSON.stringify(data)); }');
+          }
+        },
+        configureServer(server: any) {
+          const dummyWs = {
+            send: () => {},
+            close: () => {},
+            on: () => {},
+            off: () => {},
+            clients: new Set(),
+            listen: () => {},
+          };
+          if (!server.ws) {
+            server.ws = dummyWs;
+          } else if (!server.ws.send) {
+            server.ws.send = () => {};
+          }
+          if (!server.hot) {
+            server.hot = dummyWs;
+          } else if (!server.hot.send) {
+            server.hot.send = () => {};
+          }
+        },
+      },
     ],
     resolve: {
       alias: {
@@ -58,6 +86,7 @@ export default defineConfig(() => {
     },
     server: {
       hmr: false,
-    },
+      forwardConsole: false,
+    } as any,
   };
 });

@@ -9,6 +9,7 @@ if (typeof (globalThis as any).__filename === "string" && (globalThis as any).__
 import http from "http";
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import "dotenv/config";
@@ -17,6 +18,12 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "15mb" }));
+
+// Always serve static assets from public folder
+const publicFolder = path.join(process.cwd(), "public");
+if (fs.existsSync(publicFolder)) {
+  app.use(express.static(publicFolder));
+}
 
 let aiClient: GoogleGenAI | null = null;
 function getAIClient(): GoogleGenAI | null {
@@ -40,16 +47,20 @@ app.get("/api/health", (_req, res) => {
 
 // Explicit Service Worker route with proper Service-Worker-Allowed and MIME headers
 app.get("/sw.js", (_req, res) => {
-  const swPath = path.join(process.cwd(), "public", "sw.js");
+  const distSW = path.join(process.cwd(), "dist", "sw.js");
+  const publicSW = path.join(process.cwd(), "public", "sw.js");
+  const swPath = fs.existsSync(distSW) ? distSW : publicSW;
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
   res.setHeader("Service-Worker-Allowed", "/");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.sendFile(swPath);
 });
 
-// Explicit Web App Manifest route
-app.get("/manifest.webmanifest", (_req, res) => {
-  const manifestPath = path.join(process.cwd(), "public", "manifest.webmanifest");
+// Explicit Web App Manifest route (supporting both .webmanifest and .json)
+app.get(["/manifest.webmanifest", "/manifest.json"], (_req, res) => {
+  const distManifest = path.join(process.cwd(), "dist", "manifest.webmanifest");
+  const publicManifest = path.join(process.cwd(), "public", "manifest.webmanifest");
+  const manifestPath = fs.existsSync(distManifest) ? distManifest : publicManifest;
   res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
   res.sendFile(manifestPath);
@@ -489,11 +500,23 @@ async function startServer() {
       server: {
         middlewareMode: true,
         hmr: false,
-        ws: { server: httpServer },
-      },
+        forwardConsole: false,
+      } as any,
       logLevel: "warn",
       appType: "spa",
     });
+
+    const dummyWs = {
+      send: () => {},
+      close: () => {},
+      on: () => {},
+      off: () => {},
+      clients: new Set(),
+      listen: () => {},
+    };
+    if (!vite.ws) (vite as any).ws = dummyWs;
+    if (!vite.hot) (vite as any).hot = dummyWs;
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");

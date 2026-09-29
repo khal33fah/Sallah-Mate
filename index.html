@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <script>
       // Filter benign Vite HMR websocket connection notifications in cloud sandbox
       (function() {
@@ -24,6 +24,12 @@
         }
 
         if (typeof window !== 'undefined') {
+          var origOnError = window.onerror;
+          window.onerror = function(msg, url, line, col, error) {
+            if (isIgnored(msg) || isIgnored(error)) return true;
+            if (origOnError) return origOnError.apply(this, arguments);
+          };
+
           window.addEventListener('error', function(event) {
             var msg = (event && (event.message || (event.error && (event.error.message || event.error.stack)))) || '';
             if (isIgnored(msg)) {
@@ -84,7 +90,12 @@
     <meta property="og:title" content="Sallah Mate" />
     <meta property="og:description" content="Daily prayer times tracker with live GPS Qibla compass navigator, Adhan app suspension blocker, strict anti-bypass security, voice recorder Iqamah prayer verification, camera mate verification, spiritual streaks, and context-aware Duas." />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Sallah Mate" />
+    <meta property="og:image" content="/pwa-512x512.png" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sallah Mate" />
+    <meta name="twitter:description" content="Daily prayer times tracker with live GPS Qibla compass navigator, Adhan app suspension blocker, strict anti-bypass security, voice recorder Iqamah prayer verification, camera mate verification, spiritual streaks, and context-aware Duas." />
+    <meta name="twitter:image" content="/pwa-512x512.png" />
     <meta name="theme-color" content="#0c0a09" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -96,6 +107,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Scheherazade+New:wght@400;700&display=swap" rel="stylesheet">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Sallah Mate",
+      "applicationCategory": "LifestyleApplication",
+      "operatingSystem": "All",
+      "description": "Daily prayer times tracker with live GPS Qibla compass navigator, Adhan app suspension blocker, strict anti-bypass security, voice recorder Iqamah prayer verification, camera mate verification, spiritual streaks, and context-aware Duas.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
   </head>
   <body class="bg-stone-950 text-stone-100 antialiased selection:bg-emerald-600 selection:text-white">
     <div id="root"></div>

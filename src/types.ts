@@ -107,6 +107,15 @@ export interface IslamicBook {
   chapters: IslamicBookChapter[];
 }
 
+export interface PrayerAdjustments {
+  Fajr: number; // minutes: e.g. -30 to +30
+  Sunrise: number;
+  Dhuhr: number;
+  Asr: number;
+  Maghrib: number;
+  Isha: number;
+}
+
 export interface LocationConfig {
   city: string;
   country: string;
